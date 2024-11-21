@@ -1,6 +1,5 @@
 # degradation_model.py：用于构建和模拟水下图像退化模型的脚本
 
-
 """
 simulate_color_cast： 模拟偏色现象，通过对每个颜色通道应用不同的透射率和环境光。
 simulate_low_light： 模拟弱光现象，对整个图像应用统一的透射率和环境光。
