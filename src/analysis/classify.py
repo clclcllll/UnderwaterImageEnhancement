@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 import os
 
+
 def colors(image):
     """
     计算图像的颜色通道平均值（蓝、绿、红）。
@@ -13,6 +14,7 @@ def colors(image):
     mean_colors = cv2.mean(image)[:3]
     return mean_colors  # 返回 (blue, green, red)
 
+
 def brightness(gray_image):
     """
     计算灰度图像的平均亮度。
@@ -23,6 +25,7 @@ def brightness(gray_image):
     """
     return np.mean(gray_image)
 
+
 def variance(gray_image):
     """
     使用拉普拉斯算子计算图像清晰度（拉普拉斯方差）。
@@ -32,6 +35,7 @@ def variance(gray_image):
         float: 拉普拉斯方差。
     """
     return cv2.Laplacian(gray_image, cv2.CV_64F).var()
+
 
 if __name__ == "__main__":
     # 定义输入和输出文件夹路径
