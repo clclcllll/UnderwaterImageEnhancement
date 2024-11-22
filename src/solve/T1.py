@@ -1,108 +1,132 @@
-# 主程序
 import os
-import glob
 import cv2
 import numpy as np
 import pandas as pd
+from PIL import Image
+
+# 参数设定
+T_COLOR = 50  # 颜色偏移阈值
+T_LIGHT = 50  # 低光照阈值
+T_BLUR = 10  # 模糊阈值
 
 
-def analyzeColorBias(img):
-    # 将图像转换为范围 [0,1] 的浮点数
-    img_float = img.astype(np.float32) / 255.0
-
-    # 分离图像的 B、G、R 通道
-    B, G, R = cv2.split(img_float)
-
-    # 计算每个通道的均值
-    meanR = np.mean(R)
-    meanG = np.mean(G)
-    meanB = np.mean(B)
-
-    # 判断图像是否存在颜色偏差
-    isColorBiased = ((meanB > meanR + 0.05) and (meanB > meanG + 0.05)) or \
-                    ((meanG > meanB + 0.05) and (meanG > meanR + 0.05)) or \
-                    ((meanR > meanB + 0.05) and (meanR > meanG + 0.05))
-    return isColorBiased
+# 使用 Pillow 读取图片并转换为 OpenCV 格式
+def read_image_with_pillow(image_path):
+    try:
+        img = Image.open(image_path)
+        img_cv = np.array(img)
+        if img.mode == "RGB":
+            img_cv = cv2.cvtColor(img_cv, cv2.COLOR_RGB2BGR)
+        return img_cv
+    except Exception as e:
+        print(f"无法读取图片: {image_path}, 错误: {e}")
+        return None
 
 
-def analyzeLowLight(img):
-    # 将图像转换为灰度图像
-    grayImg = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-    # 将灰度图像转换为 [0,1] 的浮点数
-    grayImg_float = grayImg.astype(np.float32) / 255.0
-
-    # 计算灰度图像的平均亮度
-    meanBrightness = np.mean(grayImg_float)
-
-    # 判断图像是否为低光
-    threshold = 0.3  # 亮度阈值
-    isLowLight = meanBrightness < threshold
-    return isLowLight
+# 计算 PSNR (Peak Signal-to-Noise Ratio)
+def calculate_psnr(image, reference):
+    image = image.astype(np.float64)  # 确保数据类型为浮点数
+    reference = reference.astype(np.float64)
+    mse = np.mean((image - reference) ** 2)
+    if mse == 0:
+        return float('inf')
+    return 20 * np.log10(255.0 / np.sqrt(mse))
 
 
-def analyzeBlur(img):
-    # 将图像转换为灰度图像
-    grayImg = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-    # 计算图像的拉普拉斯变换
-    laplacian = cv2.Laplacian(grayImg, cv2.CV_64F)
-
-    # 将拉普拉斯结果展平为一维数组
-    linearizedImg = laplacian.flatten()
-
-    # 计算拉普拉斯变换结果的方差
-    laplacianVar = np.var(linearizedImg)
-
-    # 判断图像是否模糊
-    threshold = 60  # 方差阈值
-    isBlurry = laplacianVar < threshold
-    return isBlurry
+# 计算 UCIQE 指标
+def calculate_uciqe(image):
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
+    l_channel, a_channel, b_channel = cv2.split(image)
+    chroma = np.sqrt(a_channel ** 2 + b_channel ** 2).astype(np.float64)  # 转换数据类型
+    ucq = np.mean(l_channel.astype(np.float64)) * np.std(chroma) / (np.mean(chroma) + 1e-6)
+    return ucq
 
 
-def analyzeImageDataset(folderPath, resultFilePath):
-    # 获取文件夹中的所有文件，并按文件在目录中的顺序处理
-    entries = sorted(os.scandir(folderPath), key=lambda e: e.name)
+# 计算 UIQM (Underwater Image Quality Metric)
+def calculate_uiqm(image):
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    h, s, v = cv2.split(image)
+    uiqm = 0.5 * np.std(h.astype(np.float64)) + 0.25 * np.std(s.astype(np.float64)) + 0.25 * np.mean(
+        v.astype(np.float64))
+    return uiqm
 
-    # 初始化结果列表
+
+# 图像退化分析函数
+def analyze_image(image_path):
+    img = read_image_with_pillow(image_path)  # 使用 Pillow 读取图片
+    if img is None:
+        print(f"无法读取图像: {image_path}")
+        return None, None, None, None, None
+
+    # 转为灰度图
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+    # 颜色偏移分析
+    mean_b, mean_g, mean_r = cv2.mean(img)[:3]
+    rgb_diff = max(abs(mean_r - mean_g), abs(mean_g - mean_b), abs(mean_b - mean_r))
+    color_cast = rgb_diff > T_COLOR
+
+    # 低光照分析
+    mean_light = np.mean(gray.astype(np.float64))  # 确保使用浮点数计算
+    low_light = mean_light < T_LIGHT
+
+    # 模糊分析
+    laplacian = cv2.Laplacian(gray, cv2.CV_64F)
+    variance = laplacian.var()
+    blur = variance < T_BLUR
+
+    # 计算 PSNR
+    reference = np.full_like(img, 128)  # 假设为全灰的图像
+    psnr = calculate_psnr(img, reference)
+
+    # 计算 UCIQE 和 UIQM
+    uciqe = calculate_uciqe(img)
+    uiqm = calculate_uiqm(img)
+
+    return color_cast, low_light, blur, psnr, uciqe, uiqm
+
+
+# 图像分类函数
+def classify_images(image_folder, output_excel):
     results = []
 
-    # 遍历每个图像文件
-    for i, entry in enumerate(entries):
-        if entry.is_file() and (entry.name.lower().endswith('.jpg') or entry.name.lower().endswith('.png')):
-            fileName = entry.name
-            imagePath = entry.path
-            print(f'正在处理图像 {fileName}')
-            img = cv2.imread(imagePath)
+    for file_name in os.listdir(image_folder):
+        file_path = os.path.join(image_folder, file_name)
+        if not os.path.isfile(file_path):
+            continue
 
-            # 检查图像是否成功加载
-            if img is None:
-                print(f'无法读取图像 {fileName}')
-                continue
+        # 分析图像退化类型和指标
+        color_cast, low_light, blur, psnr, uciqe, uiqm = analyze_image(file_path)
+        if color_cast is None:
+            continue
 
-            # 分析颜色偏差
-            isColorBiased = analyzeColorBias(img)
+        # 分类
+        if color_cast:
+            classification = "Color Cast"
+        elif low_light:
+            classification = "Low Light"
+        elif blur:
+            classification = "Blur"
+        else:
+            classification = "Clear"
 
-            # 分析低光
-            isLowLight = analyzeLowLight(img)
+        # 记录结果
+        results.append({
+            "image file name": file_name,
+            "Degraded Image Classification": classification,
+            "PSNR": None,
+            "UCIQE": None,
+            "UIQM": None
+        })
 
-            # 分析模糊
-            isBlurry = analyzeBlur(img)
-
-            # 将结果添加到列表
-            results.append([fileName, isColorBiased, isLowLight, isBlurry])
-
-            # 打印进度
-            print(f'已处理 {i + 1} / {len(entries)} 张图像')
-
-    # 将结果保存为 CSV 文件
-    df = pd.DataFrame(results, columns=['文件名', '是否颜色偏差', '是否低光', '是否模糊'])
-    df.to_csv(resultFilePath, index=False)
+    # 保存到 Excel
+    df = pd.DataFrame(results)
+    df.to_excel(output_excel, index=False, engine='openpyxl')
+    print(f"分类结果已保存至 {output_excel}")
 
 
+# 主函数
 if __name__ == "__main__":
-    folderPath = r'../../data/附件一/'  # 替换图像文件夹路径
-    resultFilePath = '../../results/metrics/plots/T1.csv'  # 结果文件路径
-
-    analyzeImageDataset(folderPath, resultFilePath)
-
+    image_folder = r"../../data/附件一"
+    output_excel = r"../../results/metrics/T1.xlsx"
+    classify_images(image_folder, output_excel)
