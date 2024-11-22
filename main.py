@@ -1,9 +1,9 @@
 import cv2
 import numpy as np
 
-from src.analysis.evaluation import calculate_psnr, calculate_uciqe, calculate_uiqm
+from src.utils.evaluation import calculate_uciqe, calculate_uiqm
 
-enhanced_image = cv2.imread("data/processed/92_121.33_108.26_28.21_85.81_7340.52.png")
+enhanced_image = cv2.imread("data/T3enhanced/92_121.33_108.26_28.21_85.81_7340.52.png")
 normalized_image = enhanced_image.astype(np.float32) / 255.0
 
 # 计算 UCIQEzheg

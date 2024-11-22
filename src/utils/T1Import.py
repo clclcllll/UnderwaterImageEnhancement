@@ -17,7 +17,7 @@ def translate_classification(row):
 
 
 # 读取 CSV 文件
-csv_file_path = '../../results/metrics/plots/image_analysis_results.csv'  # 替换为你的 CSV 文件路径
+csv_file_path = '../../results/metrics/plots/T1.csv'  # 替换为你的 CSV 文件路径
 csv_data = pd.read_csv(csv_file_path)
 
 # 添加翻译列并生成目标格式
