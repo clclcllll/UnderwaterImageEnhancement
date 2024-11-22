@@ -1,3 +1,4 @@
+# T2: 退化特性分析
 import os
 import cv2
 import numpy as np
@@ -76,12 +77,16 @@ def fit_degradation_model(image_folder):
     return pd.DataFrame(degradation_data)
 
 
-# 退化特性可视化
-def visualize_degradation(df):
+# 退化特性可视化并保存为图片
+def visualize_and_save_degradation(df, output_folder):
     """
-    可视化退化特性，包括亮度分布和模糊程度。
+    可视化退化特性并将其保存为图片。
     :param df: 图像退化数据 DataFrame
+    :param output_folder: 输出图片的文件夹路径
     """
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
+
     plt.figure(figsize=(10, 5))
 
     # 亮度分布
@@ -103,7 +108,13 @@ def visualize_degradation(df):
     plt.legend()
 
     plt.tight_layout()
-    plt.show()
+
+    # 保存图片到指定文件夹
+    output_path = os.path.join(output_folder, "T2_degradation.png")
+    plt.savefig(output_path, dpi=300)
+    plt.close()
+
+    print(f"退化特性图已保存至: {output_path}")
 
 
 # 主函数
@@ -111,6 +122,7 @@ if __name__ == "__main__":
     # 更新路径为实际图片文件夹
     image_folder = r"../../data/附件一"
     output_excel = r"../../results/metrics/T2.xlsx"
+    output_image_folder = r"../../results/plots"
 
     # 构建退化模型
     degradation_df = fit_degradation_model(image_folder)
@@ -119,5 +131,6 @@ if __name__ == "__main__":
     degradation_df.to_excel(output_excel, index=False, engine='openpyxl')
     print(f"分析结果已保存至: {output_excel}")
 
-    # 可视化退化特性
-    visualize_degradation(degradation_df)
+    # 可视化退化特性并保存图片
+    visualize_and_save_degradation(degradation_df, output_image_folder)
+

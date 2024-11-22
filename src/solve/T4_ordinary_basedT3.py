@@ -1,5 +1,4 @@
-# T3.py
-
+# 基于 T3 的图像增强方法的合并版T4
 import os
 import cv2
 import numpy as np
@@ -44,7 +43,7 @@ def calculate_uiqm(image):
         v.astype(np.float64))
 
 
-# 单一增强模型：颜色校正
+# 颜色校正模块
 def enhance_color_correction(img):
     b, g, r = cv2.split(img)
     mean_r, mean_g, mean_b = np.mean(r), np.mean(g), np.mean(b)
@@ -56,7 +55,7 @@ def enhance_color_correction(img):
     return cv2.merge((b, g, r))
 
 
-# 单一增强模型：亮度增强
+# 亮度增强模块
 def enhance_brightness(img):
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
     h, s, v = cv2.split(hsv)
@@ -66,7 +65,7 @@ def enhance_brightness(img):
     return cv2.cvtColor(hsv_enhanced, cv2.COLOR_HSV2BGR)
 
 
-# 单一增强模型：去模糊
+# 去模糊模块
 def enhance_sharpness(img):
     kernel = np.array([[-1, -1, -1],
                        [-1, 9, -1],
@@ -74,12 +73,18 @@ def enhance_sharpness(img):
     return cv2.filter2D(img, -1, kernel)
 
 
+# 联合增强模型
+def enhance_image(img):
+    img_color_corrected = enhance_color_correction(img)
+    img_brightness_enhanced = enhance_brightness(img_color_corrected)
+    img_sharp = enhance_sharpness(img_brightness_enhanced)
+    return img_sharp
+
+
 # 图像增强与验证
-def enhance_and_save(image_folder, output_excel, output_image_folder,t1_excel):
-    # 读取 T1.xlsx 分类信息
-    t1_data = pd.read_excel(t1_excel, engine='openpyxl')
-    # 构建文件名到分类的映射
-    classifications = dict(zip(t1_data['image file name'], t1_data['Degraded Image Classification']))
+def enhance_and_save(image_folder, output_excel, output_image_folder):
+    # 确保输出目录存在
+    os.makedirs(output_image_folder, exist_ok=True)
 
     results = []
     for file_name in os.listdir(image_folder):
@@ -102,18 +107,8 @@ def enhance_and_save(image_folder, output_excel, output_image_folder,t1_excel):
         uciqe_before = calculate_uciqe(img)
         uiqm_before = calculate_uiqm(img)
 
-        # 获取分类
-        classification = classifications.get(file_name, "Unclassified")
-
         # 增强图像
-        if classification == "Color Cast":
-            enhanced_img = enhance_color_correction(img)
-        elif classification == "Low Light":
-            enhanced_img = enhance_brightness(img)
-        elif classification == "Blur":
-            enhanced_img = enhance_sharpness(img)
-        else:
-            enhanced_img = img
+        enhanced_img = enhance_image(img)
 
         # 增强后指标
         psnr_after = calculate_psnr(enhanced_img, reference)
@@ -132,7 +127,7 @@ def enhance_and_save(image_folder, output_excel, output_image_folder,t1_excel):
         # 保存结果
         results.append({
             "image file name": file_name,
-            "Degraded Image Classification": classification,
+            "Degraded Image Classification": None,
             "PSNR": psnr_before,
             "UCIQE": uciqe_before,
             "UIQM": uiqm_before,
@@ -150,7 +145,6 @@ def enhance_and_save(image_folder, output_excel, output_image_folder,t1_excel):
 # 主函数
 if __name__ == "__main__":
     image_folder = r"../../data/附件一"
-    output_excel = r"../../results/metrics/T3.xlsx"  # 保存到 T3.xlsx
-    output_image_folder = r"../../results/T3enhanced_basedT3"  # 指定图片保存路径
-    t1_excel = r"../../results/metrics/T1.xlsx"  # T1.xlsx 的路径
-    enhance_and_save(image_folder, output_excel, output_image_folder, t1_excel)
+    output_excel = r"../../results/metrics/T4_ordinary_basedT3.xlsx"
+    output_image_folder = r"../../results/T4enhanced_basedT3"  # 指定图片保存路径
+    enhance_and_save(image_folder, output_excel, output_image_folder)
