@@ -16,7 +16,7 @@ def get_enhancement_description(filename):
         return "Enhancement for Different Degradation Scenarios"
     elif filename == "T4_ordinary_basedT3.xlsx":
         return "Combined Enhancement"
-    elif filename == "T4_CNN.xlsx":
+    elif filename == "T4_basedCNN.xlsx":
         return "Enhancement Using Machine Learning and Deep Learning (CNN+GAN)"
     else:
         return "Image Enhancement"

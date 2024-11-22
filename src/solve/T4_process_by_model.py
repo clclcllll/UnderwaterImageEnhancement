@@ -142,6 +142,6 @@ def process_and_analyze(input_folder, output_folder, output_excel):
 if __name__ == "__main__":
     input_folder = '../../data/附件一'
     output_folder = '../../results/T4enhanced_basedCNN'
-    output_excel = '../../results/metrics/T4_CNN.xlsx'
+    output_excel = '../../results/metrics/T4_basedCNN.xlsx'
 
     process_and_analyze(input_folder, output_folder, output_excel)
