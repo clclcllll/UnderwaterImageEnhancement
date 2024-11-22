@@ -1,254 +1,103 @@
-import io
-import math
-
 import cv2
 import numpy as np
-from skimage import color, filters
+import os
+import pandas as pd
 
-
-# 1. 计算 PSNR (Peak Signal-to-Noise Ratio)
-def calculate_psnr(original, enhanced):
-    """
-    计算 PSNR 值，用于评估增强图像与原始图像的相似性。
-    :param original: 原始图像 (numpy array)
-    :param enhanced: 增强后的图像 (numpy array)
-    :return: PSNR 值 (float)
-    """
-    mse = np.mean((original.astype(np.float32) - enhanced.astype(np.float32)) ** 2)
-    if mse == 0:  # 避免 log(0)
-        return float('inf')
-    max_pixel = 255.0  # 假设像素值范围为 0-255
-    psnr = 20 * np.log10(max_pixel / np.sqrt(mse))
-    return psnr
-
-
-def img_loader(path):
-    img = cv2.imread(path)
+# 增强水下图像的函数
+def enhance_underwater_image(img):
+    img = white_balance(img)
+    img = dehaze(img)
+    img = histogram_equalization(img)
+    img = gamma_correction(img, 2.2)
     return img
 
+# 白平衡调整
+def white_balance(img):
+    R, G, B = cv2.split(img.astype(np.float32))
+    meanR, meanG, meanB = np.mean(R), np.mean(G), np.mean(B)
+    total_mean = (meanR + meanG + meanB) / 3
+    R, G, B = R * (total_mean / meanR), G * (total_mean / meanG), B * (total_mean / meanB)
+    img = cv2.merge([R, G, B])
+    return np.clip(img, 0, 255).astype(np.uint8)
 
-def psnr1(image_true, image_test):
-    '''image_true: ground_truth图像
-       image_test: 恢复后的图像
-       psnr1和psnr2 区别在于求mse的时候是否进行255归一化,如果先对图像进行归一化,那么后面MAX=1, 否则为255
-    '''
-    mse = np.mean((image_true / 1.0 - image_test / 1.0) ** 2)
-    # compute psnr
-    if mse < 1e-10:
-        return 100
-    psnr = 20 * math.log10(255 / math.sqrt(mse))
+# 去雾
+def dehaze(img):
+    dark_channel = dark_channel_prior(img)
+    atmospheric_light = estimate_atmospheric_light(img, dark_channel)
+    transmission = estimate_transmission(img, atmospheric_light)
+    transmission = refine_transmission(transmission)
+    img = recover_scene_radiance(img, atmospheric_light, transmission)
+    return np.clip(img, 0, 255).astype(np.uint8)
+
+# 暗通道先验
+def dark_channel_prior(img, window_size=15):
+    dark_channel = np.min(img, axis=2)
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (window_size, window_size))
+    dark_channel = cv2.erode(dark_channel, kernel)
+    return dark_channel
+
+# 估计大气光
+def estimate_atmospheric_light(img, dark_channel):
+    h, w = dark_channel.shape
+    n_pixels = h * w
+    n_brightest = max(n_pixels // 1000, 1)
+    brightest_pixels = np.argsort(dark_channel.ravel())[-n_brightest:]
+    return np.max(img.reshape(-1, 3)[brightest_pixels], axis=0)
+
+# 估计透射率
+def estimate_transmission(img, atmospheric_light, omega=0.95):
+    img_normalized = img / atmospheric_light
+    transmission = 1 - omega * np.min(img_normalized, axis=2)
+    return transmission
+
+# 透射率细化
+def refine_transmission(transmission):
+    transmission = cv2.GaussianBlur(transmission, (15, 15), 1.5)
+    return transmission
+
+# 恢复场景辐射
+def recover_scene_radiance(img, atmospheric_light, transmission, t0=0.1):
+    transmission = np.maximum(transmission, t0)
+    img = (img - atmospheric_light) / transmission[:, :, np.newaxis] + atmospheric_light
+    return img
+
+# 直方图均衡化
+def histogram_equalization(img):
+    img_yuv = cv2.cvtColor(img, cv2.COLOR_BGR2YUV)
+    img_yuv[:, :, 0] = cv2.equalizeHist(img_yuv[:, :, 0])
+    img = cv2.cvtColor(img_yuv, cv2.COLOR_YUV2BGR)
+    return img
+
+# Gamma校正
+def gamma_correction(img, gamma):
+    inv_gamma = 1.0 / gamma
+    table = np.array([(i / 255.0) ** inv_gamma * 255 for i in range(256)]).astype(np.uint8)
+    return cv2.LUT(img, table)
+
+# 计算 PSNR
+def calculate_psnr(original, enhanced):
+    mse = np.mean((original - enhanced) ** 2)
+    max_val = 255
+    psnr = 10 * np.log10((max_val ** 2) / mse)
     return psnr
 
+# 计算 UCIQE
+def calculate_uciqe(img):
+    img = img.astype(np.float32) / 255.0
+    c1, c2, c3 = 0.4680, 0.2745, 0.2576
+    chroma = np.sqrt(np.sum((img - np.mean(img, axis=(0, 1))) ** 2, axis=2))
+    uc = np.mean(chroma)
+    sc = np.std(chroma)
+    l = np.mean(img[:, :, 0])
+    conl = np.max(img[:, :, 0]) - np.min(img[:, :, 0])
+    us = np.mean(chroma / (img[:, :, 0] + 1e-6))
+    return c1 * sc + c2 * conl + c3 * us
 
-def psnr2(image_true, image_test):
-    '''image_true: ground_truth图像
-       image_test: 恢复后的图像
-       psnr1和psnr2 区别在于求mse的时候是否进行255归一化,如果先对图像进行归一化,那么后面MAX=1, 否则为255
-    '''
-    mse = np.mean((image_true / 255.0 - image_test / 255.0) ** 2)
-    # compute psnr
-    if mse < 1e-10:
-        return 100
-    psnr = 20 * math.log10(1 / math.sqrt(mse))
-    return psnr
-
-def calculate_uciqe(image):
-    """
-    计算水下图像的 UCIQE 值
-    :param image: 输入的 RGB 图像（值在 [0, 1] 范围内）
-    :return: 计算得到的 UCIQE 值
-    """
-    # 归一化
-    image = image / 255.0
-
-    # 权重系数
-    c1 = 0.4680
-    c2 = 0.2745
-    c3 = 0.2576
-
-    # 将 RGB 图像转换为 LAB 颜色空间
-    lab_image = color.rgb2lab(image)
-    L = lab_image[:, :, 0]  # 明度 (L)
-    A = lab_image[:, :, 1]  # 色度分量 a
-    B = lab_image[:, :, 2]  # 色度分量 b
-
-    # 1. 计算色度 (Chroma)
-    chroma = np.sqrt(A**2 + B**2)
-    sigma_c = np.std(chroma)  # 色度的标准差
-
-    # 2. 计算亮度对比度 (Contrast of luminance)
-    top_percent = int(0.01 * L.size)  # 选取亮度的前1%
-    sorted_L = np.sort(L.flatten())
-    contrast_l = np.mean(sorted_L[-top_percent:]) - np.mean(sorted_L[:top_percent])
-
-    # 3. 计算饱和度 (Saturation)
-    chroma_flat = chroma.flatten()
-    L_flat = L.flatten()
-    saturation = np.divide(chroma_flat, L_flat, out=np.zeros_like(chroma_flat), where=L_flat != 0)
-    mean_saturation = np.mean(saturation)
-
-    # 计算 UCIQE
-    uciqe = c1 * sigma_c + c2 * contrast_l + c3 * mean_saturation
-
-    return uciqe
-
-
-def _uiconm(x, window_size):
-    """
-      Underwater image contrast measure
-      https://github.com/tkrahn108/UIQM/blob/master/src/uiconm.cpp
-      https://ieeexplore.ieee.org/abstract/document/5609219
-    """
-    plip_lambda = 1026.0
-    plip_gamma  = 1026.0
-    plip_beta   = 1.0
-    plip_mu     = 1026.0
-    plip_k      = 1026.0
-    # if 4 blocks, then 2x2...etc.
-    k1 = x.shape[1]/window_size
-    k2 = x.shape[0]/window_size
-    # weight
-    w = -1./(k1*k2)
-    blocksize_x = window_size
-    blocksize_y = window_size
-    # make sure image is divisible by window_size - doesn't matter if we cut out some pixels
-    x = x[0:int(blocksize_y*k2), 0:int(blocksize_x*k1)]
-    # entropy scale - higher helps with randomness
-    alpha = 1
-    val = 0
-    k1 = int(k1)
-    k2 = int(k2)
-    for l in range(k1):
-        for k in range(k2):
-            block = x[k*window_size:window_size*(k+1), l*window_size:window_size*(l+1), :]
-            max_ = np.max(block)
-            min_ = np.min(block)
-            top = max_-min_
-            bot = max_+min_
-            if math.isnan(top) or math.isnan(bot) or bot == 0.0 or top == 0.0: val += 0.0
-            else: val += alpha*math.pow((top/bot),alpha) * math.log(top/bot)
-            #try: val += plip_multiplication((top/bot),math.log(top/bot))
-    return w*val
-
-def mu_a(x, alpha_L=0.1, alpha_R=0.1):
-    """
-      Calculates the asymetric alpha-trimmed mean
-    """
-    # sort pixels by intensity - for clipping
-    x = sorted(x)
-    # get number of pixels
-    K = len(x)
-    # calculate T alpha L and T alpha R
-    T_a_L = math.ceil(alpha_L*K)
-    T_a_R = math.floor(alpha_R*K)
-    # calculate mu_alpha weight
-    weight = (1/(K-T_a_L-T_a_R))
-    # loop through flattened image starting at T_a_L+1 and ending at K-T_a_R
-    s   = int(T_a_L+1)
-    e   = int(K-T_a_R)
-    val = sum(x[s:e])
-    val = weight*val
-    return val
-
-def s_a(x, mu):
-    val = 0
-    for pixel in x:
-        val += math.pow((pixel-mu), 2)
-    return val/len(x)
-
-
-def _uicm(x):
-    R = x[:,:,0].flatten()
-    G = x[:,:,1].flatten()
-    B = x[:,:,2].flatten()
-    RG = R-G
-    YB = ((R+G)/2)-B
-    mu_a_RG = mu_a(RG)
-    mu_a_YB = mu_a(YB)
-    s_a_RG = s_a(RG, mu_a_RG)
-    s_a_YB = s_a(YB, mu_a_YB)
-    l = math.sqrt( (math.pow(mu_a_RG,2)+math.pow(mu_a_YB,2)) )
-    r = math.sqrt(s_a_RG+s_a_YB)
-    return (-0.0268*l)+(0.1586*r)
-
-
-def sobel(x):
-    dx = ndimage.sobel(x,0)
-    dy = ndimage.sobel(x,1)
-    mag = np.hypot(dx, dy)
-    mag *= 255.0 / np.max(mag)
-    return mag
-
-def _uism(x):
-    """
-      Underwater Image Sharpness Measure
-    """
-    # get image channels
-    R = x[:,:,0]
-    G = x[:,:,1]
-    B = x[:,:,2]
-    # first apply Sobel edge detector to each RGB component
-    Rs = sobel(R)
-    Gs = sobel(G)
-    Bs = sobel(B)
-    # multiply the edges detected for each channel by the channel itself
-    R_edge_map = np.multiply(Rs, R)
-    G_edge_map = np.multiply(Gs, G)
-    B_edge_map = np.multiply(Bs, B)
-    # get eme for each channel
-    r_eme = eme(R_edge_map, 10)
-    g_eme = eme(G_edge_map, 10)
-    b_eme = eme(B_edge_map, 10)
-    # coefficients
-    lambda_r = 0.299
-    lambda_g = 0.587
-    lambda_b = 0.144
-    return (lambda_r*r_eme) + (lambda_g*g_eme) + (lambda_b*b_eme)
-
-
-def eme(x, window_size):
-    """
-      Enhancement measure estimation
-      x.shape[0] = height
-      x.shape[1] = width
-    """
-    # if 4 blocks, then 2x2...etc.
-    k1 = x.shape[1]/window_size
-    k2 = x.shape[0]/window_size
-    # weight
-    w = 2./(k1*k2)
-    blocksize_x = window_size
-    blocksize_y = window_size
-    # make sure image is divisible by window_size - doesn't matter if we cut out some pixels
-    x = x[0:int(blocksize_y*k2), 0:int(blocksize_x*k1)]
-    val = 0
-    k1 = int(k1)
-    k2 = int(k2)
-    for l in range(k1):
-        for k in range(k2):
-            block = x[k*window_size:window_size*(k+1), l*window_size:window_size*(l+1)]
-            max_ = np.max(block)
-            min_ = np.min(block)
-            # bound checks, can't do log(0)
-            if min_ == 0.0: val += 0
-            elif max_ == 0.0: val += 0
-            else: val += math.log(max_/min_)
-    return w*val
-
-
-
-def getUIQM(x):
-    """
-      Function to return UIQM to be called from other programs
-      x: image
-    """
-    x = x.astype(np.float32)
-    ### UCIQE: https://ieeexplore.ieee.org/abstract/document/7300447
-    #c1 = 0.4680; c2 = 0.2745; c3 = 0.2576
-    ### UIQM https://ieeexplore.ieee.org/abstract/document/7305804
-    c1 = 0.0282; c2 = 0.2953; c3 = 3.5753
-    uicm   = _uicm(x)
-    uism   = _uism(x)
-    uiconm = _uiconm(x, 10)
-    uiqm = (c1*uicm) + (c2*uism) + (c3*uiconm)
-    return uiqm
+# 计算 UIQM
+def calculate_uiqm(img):
+    img = img.astype(np.float32) / 255.0
+    c1, c2, c3 = 0.0282, 0.2953, 3.5753
+    uicm = np.std(img[:, :, 0] - img[:, :, 1])
+    uism = np.mean(cv2.Sobel(img, cv2.CV_64F, 1, 1))
+    uiconm = np.mean(img)
+    return c1 * uicm + c2 * uism + c3 * uiconm
