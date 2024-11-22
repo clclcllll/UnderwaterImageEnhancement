@@ -15,7 +15,7 @@ def super_resolution(img):
     sr = cv2.dnn_superres.DnnSuperResImpl_create()
 
     # 加载预训练的超分辨率模型，路径需要替换为实际模型路径
-    model_path = "../../export/ESPCN_x2.pb"  # 替换为实际模型路径
+    model_path = "../solve/ESPCN_x2.pb"  # 替换为实际模型路径
     try:
         sr.readModel(model_path)
     except Exception as e:

@@ -146,5 +146,5 @@ def enhance_and_save(image_folder, output_excel, output_image_folder):
 if __name__ == "__main__":
     image_folder = r"../../data/附件一"
     output_excel = r"../../results/metrics/T4_ordinary_basedT3.xlsx"
-    output_image_folder = r"../../results/T4enhanced_basedT3"  # 指定图片保存路径
+    output_image_folder = r"../../results/T4enhanced_ordinary_basedT3"  # 指定图片保存路径
     enhance_and_save(image_folder, output_excel, output_image_folder)
