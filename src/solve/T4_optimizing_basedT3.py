@@ -32,7 +32,7 @@ def calculate_uiqm(image):
     return uiqm
 
 
-# 从 enhance.py 中引入的图像增强函数
+# 从图像增强函数
 def enhance_underwater_image(img):
     """
     水下图像增强，包括白平衡调整、去雾、直方图均衡化和伽马校正。

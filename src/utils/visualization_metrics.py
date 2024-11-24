@@ -4,7 +4,7 @@ import numpy as np
 import os
 
 # 文件路径配置
-output_excel = "../../results/metrics/T4_ordinary_basedT3.xlsx"  # 可以更改为其他文件路径
+output_excel = "../../results/metrics/T4_basedCNN.xlsx"  # 可以更改为其他文件路径
 
 # 指定输出图片的目录
 output_dir = "../../results/plots/"  # 确保该目录存在
@@ -16,8 +16,11 @@ def get_enhancement_description(filename):
         return "Enhancement for Different Degradation Scenarios"
     elif filename == "T4_ordinary_basedT3.xlsx":
         return "Combined Enhancement"
+    elif filename == "T4_optimizing_basedT3.xlsx":
+        return "Combined Enhancement Using Optimization"
     elif filename == "T4_basedCNN.xlsx":
         return "Enhancement Using Machine Learning and Deep Learning (CNN+GAN)"
+
     else:
         return "Image Enhancement"
 

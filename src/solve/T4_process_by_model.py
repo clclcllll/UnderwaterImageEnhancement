@@ -45,7 +45,12 @@ class Generator(nn.Module):
 # 加载生成器模型
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 generator = Generator().to(device)
-generator.load_state_dict(torch.load('generator.pth'))
+
+# generator.load_state_dict(torch.load('generator.pth'))
+#  加载模型时，需要指定 map_location=torch.device('cpu')，否则可能会报错
+generator.load_state_dict(torch.load('generator.pth', map_location=torch.device('cpu')))
+
+
 generator.eval()
 
 # 预处理
